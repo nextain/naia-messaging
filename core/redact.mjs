@@ -23,32 +23,36 @@ const SECRET_PATTERNS = [
 ];
 
 // Absolute filesystem paths reveal host layout and account names.
-const LOCAL_PATH_PATTERN = /(?:[A-Za-z]:\\|\/(?:home|Users|var\/home)\/)[^\s"']+/g;
+const LOCAL_PATH_PATTERN = /(?:[A-Za-z]:\\|\/(?:home|Users|opt|tmp|usr\/local|var\/(?:home|www))\/)[^\s"']+/g;
 
 const MAX_EVENT_EXCERPT_LENGTH = 480;
 
 /** The longest a redacted single-line summary may be. */
-export const MAX_SAFE_SUMMARY_LENGTH = 400;
+export const MAX_SAFE_SUMMARY_LENGTH = 512;
+
+export function redactSecrets(value) {
+	for (const pattern of SECRET_PATTERNS) value = value.replace(pattern, "[REDACTED]");
+	return value.replace(LOCAL_PATH_PATTERN, "[LOCAL_PATH]");
+}
 
 function redactText(value) {
 	let sanitized = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-	for (const pattern of SECRET_PATTERNS) sanitized = sanitized.replace(pattern, "[REDACTED]");
-	return sanitized.replace(LOCAL_PATH_PATTERN, "[LOCAL_PATH]");
+	return redactSecrets(sanitized);
 }
 
 /** Collapse to one line, strip secrets and local paths, and bound the length. */
 export function sanitizeSummary(value) {
-	if (typeof value !== "string") throw new TypeError("summary must be a string");
+	if (typeof value !== "string") throw new TypeError("safeSummary must be a string");
 	const sanitized = redactText(value);
 	if (sanitized.length > MAX_SAFE_SUMMARY_LENGTH) {
-		throw new Error(`summary exceeds ${MAX_SAFE_SUMMARY_LENGTH} characters`);
+		throw new Error(`safeSummary exceeds ${MAX_SAFE_SUMMARY_LENGTH} characters`);
 	}
 	return sanitized;
 }
 
 /** A bounded, redacted excerpt for event logs. Returns null for empty input. */
 export function boundedSafeExcerpt(value) {
-	if (typeof value !== "string") throw new TypeError("excerpt must be a string");
+	if (typeof value !== "string") throw new TypeError("event excerpt must be a string");
 	const sanitized = redactText(value);
 	if (!sanitized) return null;
 	const characters = [...sanitized];

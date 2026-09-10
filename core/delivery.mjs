@@ -10,8 +10,8 @@
  *                 review, and a resend must be idempotent (see nonce below).
  *
  * A per-delivery nonce lets an adapter make sends idempotent: the same nonce
- * must never produce two posted messages, so an "unknown" outcome can be
- * retried without doubling up.
+ * reduces duplicate risk inside the transport's retention window. It is not
+ * permission to retry an unknown outcome; preserve that state for review.
  *
  * Adapters (core has no network of its own) implement `postOnce` against their
  * transport and return one of these outcomes; `deliver` splits long content,
