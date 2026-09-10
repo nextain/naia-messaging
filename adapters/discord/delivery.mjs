@@ -36,12 +36,21 @@ export async function postDiscordMessageOnce({
 	fetchImpl = fetch,
 	signal,
 	timeoutMs = 15000,
+	allowedUsers = [],
 }) {
 	snowflake(channelId, "channelId");
 	if (typeof token !== "string" || token.length < 16) throw new Error("Discord credential is not ready");
 	if (typeof content !== "string" || content.length === 0 || content.length > 2000) {
 		throw new Error("Discord message length is invalid");
 	}
+	if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60000) throw new Error("Discord request timeout is invalid");
+	if (!Array.isArray(allowedUsers) || allowedUsers.length > 100 || allowedUsers.some(id => typeof id !== "string" || !SNOWFLAKE.test(id))) throw new Error("Discord allowed users are invalid");
+	if (typeof nonce !== "string" || !/^[A-Za-z0-9_:-]{1,25}$/.test(nonce)) throw new Error("Discord delivery nonce is invalid");
+	// The host supplies registered recipients, and only direct first-line calls
+	// can notify them. Quoted calls and later body mentions have no calling power.
+	const firstLine = content.split(/\r?\n/, 1)[0];
+	const addressed = firstLine.trimStart().startsWith(">") ? [] : [...firstLine.matchAll(/<@!?(\d{17,20})>/g)].map(match => match[1]);
+	const users = [...new Set(allowedUsers.filter(id => addressed.includes(id)))];
 	const controller = new AbortController();
 	const abort = () => controller.abort();
 	if (signal?.aborted) abort();
@@ -52,7 +61,7 @@ export async function postDiscordMessageOnce({
 		const response = await fetchImpl(`${API_BASE}/channels/${channelId}/messages`, {
 			method: "POST",
 			headers: { authorization: `Bot ${token}`, "content-type": "application/json" },
-			body: JSON.stringify({ content, allowed_mentions: { parse: [] }, nonce, enforce_nonce: true }),
+			body: JSON.stringify({ content, allowed_mentions: { parse: [], ...(users.length ? { users } : {}), replied_user: false }, nonce, enforce_nonce: true }),
 			signal: controller.signal,
 		});
 		if (response.ok) {
