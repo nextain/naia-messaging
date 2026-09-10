@@ -47,6 +47,12 @@ Node.js 22.13 이상이 필요하며 외부 런타임 의존성은 없다. 소�
 JavaScript 소비자는 `engine/discord/*` API를 사용한다. Python 같은 기존 호스트는
 `runtime/host-bridge.mjs`의 버전 1 JSONL 파이프를 쓴다. `gateway` 모드는 호스트의
 `state`·`dispatch` ACK를 기다린 뒤 수신 sequence를 커밋하며 heartbeat 제어는 계속 처리한다.
+정상 종료할 때 호스트는 같은 파이프로 `{"version":1,"operation":"stop"}`을 보내고
+`stopped` 영수증과 정상 종료를 받을 때까지 `dispatch`·`state`에 계속 응답한다.
+이미 시작된 dispatch의 마지막 sequence ACK까지 확인하며, 시작하지 않은 프레임은
+기존 checkpoint에서 resume한다. 12초 안에 drain하지 못하거나 ACK가 실패하면 성공
+영수증 없이 실패 종료한다. 호스트도 이전 callback 정리가 끝나기 전에 재접속하지 않는다.
+EOF·프로세스 신호는 정상 종료 요청을 대체하지 않으며 기존 실패 경로를 유지한다.
 `call` 모드는 `scope`·`redact`·`delivery` 한 번의 호출만 수행한다. `backend` 모드는
 이미 claim한 작업 하나를 실행하며 별도 실행 증거 원장으로 같은 작업의 재실행을 거부한다.
 호스트는 작업 큐·승인·수신자·outbox의 정본을 유지한다. 플랫폼 메시지나 모델 출력은 RPC가 아니다.
