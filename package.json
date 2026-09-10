@@ -1,7 +1,7 @@
 {
   "name": "naia-messaging",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Naia conversation layer: transport-neutral core + Discord adapter. Instances hold config; the code lives here.",
   "exports": {
@@ -17,5 +17,17 @@
   },
   "engines": {
     "node": ">=20.11"
-  }
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nextain/naia-messaging.git"
+  },
+  "files": [
+    "core",
+    "adapters",
+    "runtime",
+    "README.md",
+    "LICENSE"
+  ]
 }
