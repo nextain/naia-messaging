@@ -1,0 +1,21 @@
+{
+  "name": "naia-messaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Naia conversation layer: transport-neutral core + Discord adapter. Instances hold config; the code lives here.",
+  "exports": {
+    ".": "./core/index.mjs",
+    "./core": "./core/index.mjs",
+    "./adapters/discord": "./adapters/discord/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs && node scripts/public-safety-scan.mjs",
+    "test:unit": "node --test test/*.test.mjs",
+    "scan": "node scripts/public-safety-scan.mjs",
+    "validate-config": "node runtime/cli.mjs validate-config"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "instance": "example-instance",
+  "transport": "discord",
+  "tokenEnvVar": "NAIA_MESSAGING_DISCORD_TOKEN",
+  "participantsFile": "config/participants.local.json",
+  "messageContentIntent": false,
+  "contactWindow": {
+    "timezone": "Asia/Seoul",
+    "days": ["mon", "tue", "wed", "thu", "fri"],
+    "startHour": 9,
+    "endHour": 18,
+    "defaultResponderAlias": null
+  },
+  "bindings": [
+    {
+      "kind": "thread",
+      "spaceId": "REPLACE_WITH_GUILD_ID",
+      "channelId": "REPLACE_WITH_PARENT_CHANNEL_ID",
+      "threadId": "REPLACE_WITH_THREAD_ID",
+      "workItem": "your-repo#1",
+      "agentProfileId": "default",
+      "respondWhen": "mentioned",
+      "allowedUserIds": ["REPLACE_WITH_USER_ID"],
+      "canStartConversation": false,
+      "operatorActions": false,
+      "historyVisibility": "shared"
+    }
+  ]
+}
