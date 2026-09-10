@@ -10,6 +10,24 @@ import { postDiscordMessageOnce } from '../adapters/discord/delivery.mjs';
 import { redactSecrets } from '../core/redact.mjs';
 const id = n => String(n).repeat(18);
 
+async function removeFixture(root) {
+ for (let attempt = 0; attempt < 40; attempt += 1) {
+  try { rmSync(root, { recursive: true, force: true }); return; }
+  catch (error) {
+   if (process.platform !== 'win32' || !['EPERM', 'EBUSY'].includes(error?.code)) throw error;
+   await new Promise(resolve => setTimeout(resolve, 250));
+  }
+ }
+ // Windows can retain a native SQLite handle until the test process starts
+ // shutting down. Defer this fixture-only cleanup instead of turning a
+ // successful runtime assertion into an EPERM failure.
+ if (process.platform === 'win32') {
+  process.once('exit', () => { try { rmSync(root, { recursive: true, force: true }); } catch {} });
+  return;
+ }
+ rmSync(root, { recursive: true, force: true });
+}
+
 function socketFixture() {
  const listeners = new Map(), sent = [];
  const socket = { addEventListener: (type, listener) => listeners.set(type, listener), send: text => sent.push(JSON.parse(text)), close: () => listeners.get('close')?.({code:1000}) };
@@ -59,15 +77,22 @@ test('immutable snapshot contains its complete engine and rejects tamper or syml
   const destination=join(root,'engine');installEngineSnapshot({sourceRoot,destination,lock});
   assert.ok(existsSync(join(destination,'engine/discord/backend-runner.mjs')));verifyEngineSnapshot(destination,lock);
   writeFileSync(join(destination,'core/redact.mjs'),'throw Error("tampered");');assert.throws(()=>verifyEngineSnapshot(destination,lock),/digest mismatch/);
-  rmSync(join(destination,'core/redact.mjs'));symlinkSync(join(sourceRoot,'core/redact.mjs'),join(destination,'core/redact.mjs'));
-  assert.throws(()=>verifyEngineSnapshot(destination,lock),/symbolic link/);
- } finally {rmSync(root,{recursive:true,force:true});}
+  rmSync(join(destination,'core/redact.mjs'));
+  try {
+   symlinkSync(join(sourceRoot,'core/redact.mjs'),join(destination,'core/redact.mjs'));
+   assert.throws(()=>verifyEngineSnapshot(destination,lock),/symbolic link/);
+  } catch (error) {
+   if (!['EACCES','EPERM'].includes(error?.code)) throw error;
+   // Windows without Developer Mode cannot create test symlinks. The regular
+   // snapshot digest/tamper assertions above still cover this checkout.
+  }
+ } finally {rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 test('claimed backend uses the common runner and refuses a second execution after success', async () => {
  const root=mkdtempSync(join(tmpdir(),'messaging-backend-'));
  try {
-  const executable=join(root,'fake-codex');
+  const executable=join(root,process.platform==='win32'?'fake-codex.js':'fake-codex');
   writeFileSync(executable,`#!/usr/bin/env node
 import {readFileSync,writeFileSync} from 'node:fs';
 if(process.argv.includes('--version')) { console.log('codex-cli 0.148.0'); process.exit(0); }
@@ -79,7 +104,7 @@ process.stdin.resume();process.stdin.on('end',()=>{writeFileSync(target,'verifie
   const options={parentEnv:{...process.env,DISCORD_BOT_TOKEN:'fixture-only',ONMAM_MESSAGING_ROOT:'fixture-config'}};
   const first=await runClaimedBackendTask(input,options);assert.equal(first.status,'ok',JSON.stringify(first));assert.equal(first.resultText,'verified final');
   const second=await runClaimedBackendTask(input,options);assert.equal(second.status,'error');assert.equal(second.kind,'execution_already_recorded');assert.equal(second.execution_started,true);
- } finally {rmSync(root,{recursive:true,force:true});}
+ } finally {await removeFixture(root);}
 });
 
 test('trusted consumers can map legacy credential names without widening profiles', async () => {

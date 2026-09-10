@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
 
 function fixture(t) {
@@ -19,7 +20,7 @@ function fixture(t) {
     close(code) { this.listeners.get('close')({code}); }
     send() {}
   };`);
-  const child = spawn(process.execPath, ['--import', preload, resolve(import.meta.dirname, '../runtime/host-bridge.mjs'), 'gateway'], {stdio: ['pipe', 'pipe', 'pipe']});
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, resolve(import.meta.dirname, '../runtime/host-bridge.mjs'), 'gateway'], {stdio: ['pipe', 'pipe', 'pipe']});
   const closed = once(child, 'close');
   const frames = [];
   const reader = createInterface({input: child.stdout});

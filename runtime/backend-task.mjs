@@ -1,7 +1,7 @@
 // Trusted host adapter for an already-claimed task. This ledger records execution
 // evidence only; the host retains queue, approval, routing and delivery ownership.
 import { mkdirSync, chmodSync, existsSync, lstatSync } from 'node:fs';
-import { join, isAbsolute, resolve } from 'node:path';
+import { join, isAbsolute, resolve, parse } from 'node:path';
 import { SessionStore } from '../engine/discord/store.mjs';
 import { runBackendAttempt } from '../engine/discord/backend-runner.mjs';
 import { safeIdentifier } from '../core/redact.mjs';
@@ -26,9 +26,14 @@ export async function runClaimedBackendTask(input, { signal, parentEnv = process
   if (typeof executable !== 'string' || !isAbsolute(executable)) throw new Error('invalid backend executable');
   if (typeof prompt !== 'string' || Buffer.byteLength(prompt) > 1_000_000 || !prompt.trim()) throw new Error('invalid task prompt');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1_800_000) throw new Error('invalid task timeout');
-  if (typeof parentEnv.HOME !== 'string' || !isAbsolute(parentEnv.HOME)) throw new Error('host authentication root missing');
+  const authenticationRoot = parentEnv.HOME ?? parentEnv.USERPROFILE;
+  if (typeof authenticationRoot !== 'string' || !isAbsolute(authenticationRoot)) throw new Error('host authentication root missing');
   let cursor = stateRoot;
-  while (cursor !== '/') { if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw new Error('task state root contains a symbolic link'); cursor = resolve(cursor, '..'); }
+  const filesystemRoot = parse(stateRoot).root;
+  while (cursor !== filesystemRoot) {
+    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw new Error('task state root contains a symbolic link');
+    cursor = resolve(cursor, '..');
+  }
   mkdirSync(stateRoot, { recursive: true, mode: 0o700 }); chmodSync(stateRoot, 0o700);
   const store = new SessionStore(join(stateRoot, 'executions.sqlite3'));
   let attempt = null;

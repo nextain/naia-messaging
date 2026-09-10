@@ -9,7 +9,7 @@ import { runClaimedBackendTask } from '../runtime/backend-task.mjs';
 
 function fixture() {
  const root=mkdtempSync(join(tmpdir(),'messaging-host-fault-'));
- const executable=join(root,'fake-codex');
+ const executable=join(root,process.platform==='win32'?'fake-codex.js':'fake-codex');
  writeFileSync(executable,`#!/usr/bin/env node
 import {writeFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';

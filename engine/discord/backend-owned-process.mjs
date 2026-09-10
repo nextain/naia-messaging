@@ -111,7 +111,10 @@ export function backendCommand(executable, fallback) {
 
 export async function probeBackendVersion(backendId, executable, parentEnv, { signal, timeoutMs = 5_000 } = {}) {
 	const spec = backendCommand(executable, backendId);
-	const child = spawnOwnedBackend(spec.command, [...spec.prefixArgs, "--version"], { env: { PATH: parentEnv.PATH ?? "" }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+	const windowsScript = process.platform === "win32" && /\.(?:[cm]?js)$/i.test(spec.command);
+	const probeCommand = windowsScript ? process.execPath : spec.command;
+	const probeArgs = windowsScript ? [spec.command, ...spec.prefixArgs, "--version"] : [...spec.prefixArgs, "--version"];
+	const child = spawnOwnedBackend(probeCommand, probeArgs, { env: { PATH: parentEnv.PATH ?? "" }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
 	const ownedStartIdentity = process.platform === "win32" ? null : readProcessStartIdentity(child.pid);
 	let output = "";
 	for (const stream of [child.stdout, child.stderr]) {

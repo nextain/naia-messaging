@@ -11,11 +11,25 @@ $items = ConvertFrom-Json $env:NAIA_PRIVATE_ITEMS
 foreach ($item in @($items)) {
   $path = [IO.Path]::GetFullPath([string]$item.path)
   $kind = [string]$item.kind
+  if ($operation -eq "protect" -and -not (Test-Path -LiteralPath $path -PathType Any)) { continue }
   $acl = Get-Acl -LiteralPath $path
   if ($operation -eq "protect") {
     $currentOwnerSid = ([Security.Principal.NTAccount]$acl.Owner).Translate(
       [Security.Principal.SecurityIdentifier]
     )
+    $expectedInheritance = if ($kind -eq "directory") {
+      [Security.AccessControl.InheritanceFlags]"ContainerInherit, ObjectInherit"
+    } else {
+      [Security.AccessControl.InheritanceFlags]::None
+    }
+    $allowed = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) |
+      Where-Object { $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow }
+    $denied = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) |
+      Where-Object { $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Deny }
+    $alreadyPrivate = $currentOwnerSid.Value -eq $sid.Value -and $acl.AreAccessRulesProtected -and $denied.Count -eq 0 -and $allowed.Count -eq 1 -and
+      $allowed[0].IdentityReference.Value -eq $sid.Value -and -not $allowed[0].IsInherited -and
+      $allowed[0].FileSystemRights.ToString() -match "(^|,\s*)FullControl($|,)" -and $allowed[0].InheritanceFlags -eq $expectedInheritance
+    if ($alreadyPrivate) { continue }
     if ($currentOwnerSid.Value -ne $sid.Value) { $acl.SetOwner($sid) }
     $acl.SetAccessRuleProtection($true, $false)
     foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($rule) }
