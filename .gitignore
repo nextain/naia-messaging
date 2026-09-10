@@ -4,6 +4,9 @@ node_modules/
 # Runtime state and secrets — never tracked
 .runtime/
 .secrets/
+.agents/session-contracts/.recovery/
+.agents/harness/state/
+.agents/harness/leases/
 coverage/
 
 # Instance config and secrets live in the instance, never here

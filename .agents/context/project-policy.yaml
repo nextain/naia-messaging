@@ -1,0 +1,17 @@
+version: 1
+identity:
+  name: naia-messaging
+  repository: nextain/naia-messaging
+  visibility: public
+source_of_truth: GitHub issue
+scope: reusable messaging core, transport adapters, engine and host APIs
+data:
+  instance_configuration: stays_in_consumer
+  credentials: never_track_values
+  runtime_state: ignored_local_state
+publication:
+  public_safety_scan: required_tree_and_reachable_history
+  validation: npm test
+completion:
+  ai_may_not_declare_completion: true
+  meaning: Report verified behavior and remaining work; do not impersonate human acceptance.
