@@ -6,6 +6,14 @@
  * environment variable that holds it, never inline. Bindings, the contact
  * window, and the participant registry are validated with core's own
  * validators, so the runtime and the engine agree on what a valid config is.
+ *
+ * NOT here, on purpose: orchestration knobs such as `maxConcurrentJobs`,
+ * `backend.maxTurns` and `backend.timeoutSeconds`. The host owns the queue,
+ * approvals and per-issue worktrees, so those values live in the host's own
+ * config (turn/time bounds must be large enough for real work to finish, and a
+ * run that hits a bound is "interrupted", not "uncertain"). See
+ * docs/host-orchestration-contract.md. Adding them here would make every host
+ * inherit one instance's operational taste.
  */
 import { validateBindings } from "../core/binding.mjs";
 import { normaliseContactWindow } from "../core/contact-window.mjs";
