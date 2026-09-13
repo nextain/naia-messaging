@@ -111,8 +111,6 @@ export class DiscordMessageRouter {
 			return { state: "threads_cached" };
 		}
 		if (type !== "MESSAGE_CREATE") return { state: "ignored" };
-		const instanceDirectory = this.instanceDirectory ?? resolve(this.cwd, this.instance === "default" ? "naia-settings/messenger-sessions" : `naia-settings/messenger-sessions/instances/${this.instance}`);
-		void enqueueAttentionFromDispatch(type, data, this.config, instanceDirectory).catch(() => {});
 		const authorization = authorizeDiscordMessage({ message: data, bindings: this.config.discord.bindings, operatorUserIds: this.config.discord.operatorUserIds, participantProfiles: this.config.discord.participantProfiles, botUserId: this.botUserId, threadParents: this.threadParents });
 		const sourceMessageId = data.id;
 		if (!authorization.allowed) {
@@ -124,6 +122,18 @@ export class DiscordMessageRouter {
 		} catch (error) {
 			if (error?.code !== "context_changed_restart_required") throw error;
 			return rejectRuntimeInputChange({ store: this.store, sendControl: (input) => this.#sendControl(input), token: this.token, botUserId: this.botUserId, authorization, sourceMessageId, sequence });
+		}
+		const instanceDirectory = this.instanceDirectory ?? resolve(this.cwd, this.instance === "default" ? "naia-settings/messenger-sessions" : `naia-settings/messenger-sessions/instances/${this.instance}`);
+		let attention;
+		try {
+			attention = await enqueueAttentionFromDispatch(type, data, this.config, instanceDirectory, authorization);
+		} catch {
+			attention = { consumed: false, started: false, reason: "hook_failed" };
+		}
+		if (attention.consumed === true) {
+			const ingress = this.store.reserveIngress({ sourceMessageId, scopeKey: authorization.scopeKey, status: "handled", reasonCode: "host_hook_handled", dispatchSequence: sequence });
+			if (ingress.duplicate) return { state: "duplicate", reasonCode: "host_hook_handled" };
+			return { state: "handled", reasonCode: "host_hook_handled", started: attention.started === true };
 		}
 		const command = commandText(data, this.botUserId);
 		if (/^!naia(?:\s|$)/i.test(command)) return this.#handleCommand({ command, authorization, sourceMessageId, sequence });
