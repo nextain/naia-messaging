@@ -61,11 +61,35 @@ function modelName(raw) {
  * 않는다 — 주기 작업은 바깥(systemd, 또는 게이트웨이)이 띄우고, 그 경우 이 프로세스는
  * 헤드리스다. 사람이 TUI 로 여는 세션만 interactive 다.
  */
+/**
+ * 세션 종류.
+ *
+ * **기록만으로는 사람과 워커를 못 가릅니다.** 최근 14일 152/155 세션이 `agent = "build"`
+ * 인데, 사람이 TUI 로 여는 것도 자동화가 띄우는 것도 같은 이름을 씁니다(제목이
+ * `adk-adversarial-review` 인 자동 리뷰 세션도 `build` 입니다).
+ *
+ * 2026-09-13 grok 적대리뷰가 "게이트웨이 워커가 `interactive` 로 보호된다"고 짚었고,
+ * 그래서 `build` 를 `headless` 로 옮겼다가 되돌렸습니다. 그러면 사람 세션 152개가 전부
+ * 정지 대상이 됩니다 — 반대 방향으로 더 크게 틀립니다.
+ *
+ * 그래서 여기서는 **모르면 보호**하고, 실제 정지 판단은 안전장치가 살아 있는 프로세스의
+ * 단말 연결 여부로 내립니다(`ai-session-guard.mjs`). 기록이 못 가르는 것을 기록으로
+ * 가르려 하지 않습니다.
+ */
 function classify(row) {
   if (row.parent_id) return 'descendant';
-  // 게이트웨이나 스크립트가 띄운 세션은 agent 가 박혀 있다. 사람이 여는 세션은 비어 있다.
-  if (row.agent && row.agent !== 'build' && row.agent !== 'default') return 'headless';
   return 'interactive';
+}
+
+/** 시험용. 상황을 주면 이 런타임이 그것을 어떻게 부르는지 답한다. */
+export function classifyFor(situation) {
+  if (situation === 'human') return classify({});
+  if (situation === 'descendant') return classify({ parent_id: 'p1' });
+  if (situation === 'scheduled') return null;   // opencode 에 예약 개념이 없다
+  // 워커는 기록만으로 못 가른다. 거짓으로 답하지 않고 모른다고 한다 — 안전장치가
+  // 단말 연결로 가른다.
+  if (situation === 'worker') return null;
+  return null;
 }
 
 function toRecord(row, calls) {
@@ -137,6 +161,23 @@ export function usageOf(id) {
  * 프로세스에서 직접 알아낼 방법이 없어 작업 디렉터리만 돌려준다. 안전장치는 이것으로
  * "지금 도는 것이 있다"까지만 알 수 있고, 어느 세션인지는 기록 쪽에서 맞춰야 한다.
  */
+/**
+ * 그 프로세스가 단말에 붙어 있는가.
+ *
+ * 기록이 사람과 워커를 못 가를 때 쓰는 마지막 신호입니다. `/proc/<pid>/stat` 의 7번째
+ * 필드가 제어 단말이고, 0 이면 단말이 없다 — 사람이 보고 있지 않다는 뜻입니다.
+ * 읽지 못하면 null 을 내어 "모른다"를 0 과 구분합니다.
+ */
+export function hasTerminal(pid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    // comm 에 공백이 들어갈 수 있으므로 마지막 ')' 뒤부터 센다
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    const tty = Number(fields[4]);   // state, ppid, pgrp, session, tty_nr
+    return Number.isFinite(tty) ? tty !== 0 : null;
+  } catch { return null; }
+}
+
 export function live() {
   const out = [];
   let pids;
@@ -151,7 +192,8 @@ export function live() {
     if (!isOpencode) continue;
     let cwd = null;
     try { cwd = fs.readlinkSync(`/proc/${pid}/cwd`); } catch { /* 권한이 없으면 생략 */ }
-    out.push({ id: null, pid: Number(pid), cwd });
+    // runtime 을 넣지 않으면 가드가 어느 어댑터에 물을지 모른다.
+    out.push({ runtime: name, id: null, pid: Number(pid), cwd, attended: hasTerminal(pid) });
   }
   return out;
 }

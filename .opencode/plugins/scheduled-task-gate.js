@@ -75,7 +75,8 @@ export const ScheduledTaskGate = async ({ directory }, options = {}) => {
 		"chat.message": async (input, output) => {
 			if (!root) return;
 			let gate;
-			try { gate = load(); } catch { return; }   // 관문이 없는 저장소에서는 아무 일도 하지 않는다
+			try { gate = load(); }
+			catch { return; }   // 관문 파일이 없는 저장소에서는 아무 일도 하지 않는다
 			// onPrompt 는 차단 판정을 stdout 으로 낸다. opencode 에서 프롬프트를 막는 계약이
 			// 없으므로 여기서는 기록만 남기고 출력은 삼킨다. 실제 집행은 아래 도구 쪽이 한다.
 			capture(() => gate.onPrompt({
@@ -89,7 +90,16 @@ export const ScheduledTaskGate = async ({ directory }, options = {}) => {
 		"tool.execute.before": async (input) => {
 			if (!root) return;
 			let gate;
-			try { gate = load(); } catch { return; }
+			try { gate = load(); }
+			catch (error) {
+				// 집행 지점에서는 조용히 열지 않는다. 관문 파일이 있어야 할 저장소에서
+				// 그것을 못 읽으면 막는 장치가 사라진 것이므로 크게 알린다.
+				// session-contract-gate.js 가 같은 자리에서 같은 선택을 한다.
+				if (fs.existsSync(path.join(root, GATE_RELATIVE))) {
+					throw new Error(`[scheduled-task-gate] 관문을 읽지 못했습니다: ${error?.message || error}`);
+				}
+				return;
+			}
 
 			// onTool 은 stdout 으로 판정을 낸다. opencode 는 예외로 거부하므로 여기서 가로챈다.
 			const said = capture(() => gate.onTool({

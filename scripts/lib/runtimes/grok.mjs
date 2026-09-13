@@ -122,6 +122,16 @@ export function sessions({ sinceMs = 0, untilMs = Infinity } = {}) {
  * 하나뿐이었고, 빠진 둘이 바로 감시해야 할 종류였다. 그래서 /proc 에서 프로세스를 찾고
  * 그 프로세스가 열어 둔 `<세션디렉터리>/events.jsonl` 로 세션을 알아낸다.
  */
+/** 시험용. 상황을 주면 이 런타임이 그것을 어떻게 부르는지 답한다. */
+export function classifyFor(situation) {
+  // grok 은 session_kind 와 예약 주입 프롬프트로 가른다. classify() 의 규칙을 그대로 따른다.
+  if (situation === 'human') return 'interactive';
+  if (situation === 'descendant') return 'descendant';       // session_kind 가 subagent*
+  if (situation === 'scheduled') return 'scheduled';         // 앞 4줄의 예약 reminder
+  if (situation === 'worker') return 'headless';             // session_kind === 'headless'
+  return null;
+}
+
 export function live() {
   const found = new Map();
   for (const entry of fs.readdirSync('/proc')) {

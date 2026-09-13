@@ -57,6 +57,35 @@ function meta(file) {
   };
 }
 
+/**
+ * 세션 종류.
+ *
+ * 예전에는 부모가 없으면 전부 `headless` 였다. 그러면 **사람이 TUI 로 여는 세션이
+ * 멈춰도 되는 것으로 잡힌다.** 2026-09-13 grok 적대리뷰가 짚었다.
+ *
+ * codex 는 `originator` 로 누가 열었는지 말한다. 사람이 연 것은 보호하고, 스크립트나
+ * 자동화가 연 것만 멈출 수 있게 한다. 모르면 보호하는 쪽으로 둔다 — 사람 세션을 멈추는
+ * 대가가 워커를 못 멈추는 대가보다 크다.
+ */
+const HUMAN_ORIGINATORS = new Set(['cli', 'tui', 'codex_cli_rs', 'vscode', 'ide']);
+
+function classify(m) {
+  if (m.parent) return 'descendant';
+  const who = String(m.originator ?? '').toLowerCase();
+  if (!who) return 'interactive';            // 모르면 보호한다
+  if (HUMAN_ORIGINATORS.has(who)) return 'interactive';
+  return 'headless';
+}
+
+/** 시험용. 상황을 주면 이 런타임이 그것을 어떻게 부르는지 답한다. */
+export function classifyFor(situation) {
+  if (situation === 'human') return classify({ originator: 'cli' });
+  if (situation === 'descendant') return classify({ parent: 'p1' });
+  if (situation === 'scheduled') return null;          // codex 에 예약 개념이 없다
+  if (situation === 'worker') return classify({ originator: 'automation' });
+  return null;
+}
+
 export function sessions({ sinceMs = 0, untilMs = Infinity } = {}) {
   const out = [];
   for (const file of rollouts()) {
@@ -98,7 +127,7 @@ export function sessions({ sinceMs = 0, untilMs = Infinity } = {}) {
     out.push({
       runtime: name, id: path.basename(file, '.jsonl').slice(-36), dir: path.dirname(file),
       file, workspace: m.cwd ?? null,
-      kind: m.parent ? 'descendant' : 'headless',
+      kind: classify(m),
       scheduled: null, nativeKind: m.originator ?? null,
       parent: m.parent ?? null, depth: m.depth ?? 0, agentRole: m.agentRole ?? null,
       tokens, calls, turns: calls, notionalUsd: null, lastAt: lastAt || st.mtimeMs, model,
