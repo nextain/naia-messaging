@@ -1,0 +1,70 @@
+/**
+ * claude 런타임 어댑터.
+ *
+ * 계약: `../session-usage.mjs` 머리말.
+ */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { forEachLine } from '../jsonl.mjs';
+
+export const name = 'claude';
+
+/** 구독제다. 토큰은 기록에 남지만 이 계정에 통화 환산은 없다. */
+export const meter = {
+  kind: 'subscription',
+  unit: null,
+  note: '구독이라 통화 환산이 없다. 토큰만 센다.',
+};
+
+const BASE = path.join(os.homedir(), '.claude', 'projects');
+
+function* transcripts(dir = BASE, depth = 0) {
+  if (depth > 2 || !fs.existsSync(dir)) return;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) { yield* transcripts(p, depth + 1); continue; }
+    if (e.name.endsWith('.jsonl')) yield { file: p, workspace: path.basename(dir) };
+  }
+}
+
+export function sessions({ sinceMs = 0, untilMs = Infinity } = {}) {
+  const out = [];
+  for (const { file, workspace } of transcripts()) {
+    const st = fs.statSync(file);
+    if (st.mtimeMs < sinceMs) continue;
+    const tokens = { input: 0, cached: 0, output: 0, reasoning: 0 };
+    let calls = 0; let turns = 0; let model = null; let lastAt = 0; let isSidechain = false;
+    forEachLine(file, (line) => {
+      if (!line.includes('"usage"')) return;
+      let j;
+      try { j = JSON.parse(line); } catch { return; }   // 깨진 줄 하나가 집계를 막지 않는다
+      const u = j.message?.usage;
+      if (!u) return;
+      const at = j.timestamp ? Date.parse(j.timestamp) : 0;
+      if (at && (at < sinceMs || at > untilMs)) return;
+      const read = u.cache_read_input_tokens || 0;
+      const write = u.cache_creation_input_tokens || 0;
+      // 공용 모양에서 input 은 캐시를 포함한 전체 입력이다.
+      tokens.input += (u.input_tokens || 0) + read + write;
+      tokens.cached += read;
+      tokens.output += u.output_tokens || 0;
+      calls += 1; turns += 1;
+      if (j.message?.model) model = j.message.model;
+      if (j.isSidechain) isSidechain = true;
+      if (at > lastAt) lastAt = at;
+    });
+    if (!calls) continue;
+    out.push({
+      runtime: name, id: path.basename(file, '.jsonl'), dir: path.dirname(file), workspace,
+      kind: isSidechain ? 'descendant' : 'interactive', scheduled: null, nativeKind: isSidechain ? 'sidechain' : null,
+      tokens, calls, turns, notionalUsd: null, lastAt: lastAt || st.mtimeMs, model,
+    });
+  }
+  return out;
+}
+
+/** claude 는 세션 id 를 프로세스에 드러내지 않는다. 살아 있는 세션 목록은 제공하지 않는다. */
+export function live() { return []; }
