@@ -4,6 +4,7 @@ import { classifyDiscordScope, isBotMentioned, authorizeDiscordMessage } from ".
 import { describeDiscordAttachments, attachmentSummaryText, safeAttachmentName } from "../adapters/discord/attachments.mjs";
 import { postDiscordMessageOnce, deliverToDiscord } from "../adapters/discord/delivery.mjs";
 import { validateBindings } from "../core/binding.mjs";
+import { extractAddressTokens, resolveDiscordAttention } from "../adapters/discord/attention.mjs";
 
 // Synthetic snowflakes built at runtime so no literal id appears in source.
 const gid = "8".repeat(18);
@@ -71,4 +72,24 @@ test("deliverToDiscord drives core delivery", async () => {
 	const res = await deliverToDiscord({ token: "x".repeat(32), channelId: cid, content: "short reply", botUserId: bot, fetchImpl: (...a) => { calls += 1; return okFetch(...a); } });
 	assert.equal(res.state, "confirmed");
 	assert.equal(calls, 1);
+});
+
+test("Discord attention maps a mention id through the instance registry", () => {
+	const registry = {
+		participants: [
+			{ platformUserId: "id-4060", alias: "win4060", project: "shell", handles: ["4060"] },
+			{ platformUserId: "id-3090", alias: "naia3090", project: "shell", handles: ["3090"] },
+		],
+	};
+	const extracted = extractAddressTokens(
+		{ content: "please pick this up", mentions: [{ id: "id-4060" }] },
+		{ registry },
+	);
+	assert.deepEqual(extracted.tokens, ["win4060"]);
+	const hit = resolveDiscordAttention(
+		{ content: "3090 run the local llm path", mentions: [] },
+		{ registry },
+	);
+	assert.equal(hit.named, true);
+	assert.equal(hit.addressed[0].alias, "naia3090");
 });

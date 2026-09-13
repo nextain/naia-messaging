@@ -19,3 +19,4 @@ export {
 	attachmentPromptSection,
 	safeAttachmentName,
 } from "./attachments.mjs";
+export { extractAddressTokens, resolveDiscordAttention } from "./attention.mjs";

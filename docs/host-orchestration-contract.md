@@ -17,6 +17,8 @@
   언제나. 창 밖 시간은 재촉 횟수에 세지 않는다.
 - `core/delivery` — 확인됨 / 실패 / 알 수 없음. `unknown` 은 자동 재전송하지 않고
   저장한 nonce 를 보존한다.
+- `core/attention` — 누가 불렸는지. 호스트는 `localAttention`이 가리키는 참가자의
+  워커만 켠다. 타이머로 큐를 훑지 않는다. 전송 수단 감시는 어댑터다.
 - `engine/discord/backend-runner` + `runtime/backend-task.mjs` — 이미 claim 된 작업
   하나만 1회 실행하고, 실행 증거 원장에 남은 작업의 재실행은 `execution_already_recorded`
   로 거부한다. 턴 상한·타임아웃·종료 사유는 실행 결과에 그대로 실려 나온다.

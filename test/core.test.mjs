@@ -7,6 +7,11 @@ import { whoseTurn, classifyAgentMessage } from "../core/verdict.mjs";
 import { buildConfirmationRequest, buildApprovalRequest } from "../core/confirmation.mjs";
 import { normaliseContactWindow, withinContactWindow, shouldContact } from "../core/contact-window.mjs";
 import { splitContent, deliver, chunkNonce } from "../core/delivery.mjs";
+import {
+	validateAttentionRoster,
+	resolveAttention,
+	localAttention,
+} from "../core/attention.mjs";
 
 test("redact removes secrets and local paths", () => {
 	const out = sanitizeSummary("token=abcdef1234567890 in /home/luke/secret");
@@ -144,4 +149,49 @@ test("delivery stops on a failed receipt", async () => {
 	const res = await deliver({ content: "a".repeat(2000), postOnce: async () => ({ state: "failed", reasonCode: "authorization" }) });
 	assert.equal(res.state, "failed");
 	assert.equal(res.receipts.length, 1);
+});
+
+const attentionRoster = {
+	participants: [
+		{ alias: "win4060", project: "shell", handles: ["4060", "rtx4060"] },
+		{ alias: "naia3090", project: "shell", handles: ["3090"] },
+	],
+};
+
+test("attention: plaintext device name addresses that participant", () => {
+	const hit = resolveAttention({ text: "4060, take the GPU path on 0.2.3", roster: attentionRoster });
+	assert.equal(hit.named, true);
+	assert.equal(hit.addressed.length, 1);
+	assert.equal(hit.addressed[0].alias, "win4060");
+	assert.equal(hit.addressed[0].identity, "[win4060/shell]");
+});
+
+test("attention: token alias addresses without needing the body", () => {
+	const hit = resolveAttention({ tokens: ["naia3090"], text: "", roster: attentionRoster });
+	assert.equal(hit.addressed[0].alias, "naia3090");
+});
+
+test("attention: unnamed message is not a wake", () => {
+	const hit = resolveAttention({ text: "status of the launch branch?", roster: attentionRoster });
+	assert.equal(hit.named, false);
+	assert.equal(hit.addressed.length, 0);
+});
+
+test("attention: duplicate handles across participants are refused", () => {
+	assert.throws(() => validateAttentionRoster({
+		participants: [
+			{ alias: "dev-a", project: "p", handles: ["gpu"] },
+			{ alias: "dev-b", project: "p", handles: ["gpu"] },
+		],
+	}), /claimed by both/);
+});
+
+test("localAttention wakes only this host's identities", () => {
+	const attention = resolveAttention({ text: "4060 and 3090 both report HEAD", roster: attentionRoster });
+	const here = localAttention({ attention, localIdentities: ["[naia3090/shell]"] });
+	assert.equal(here.named, true);
+	assert.equal(here.wake.length, 1);
+	assert.equal(here.wake[0].alias, "naia3090");
+	const silent = localAttention({ attention, localIdentities: ["[win250/shell]"] });
+	assert.equal(silent.named, false);
 });

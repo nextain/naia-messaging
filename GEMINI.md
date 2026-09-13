@@ -16,6 +16,8 @@
 
 - `core/` 는 어떤 전송 수단도 몰라야 한다. Discord 라는 단어, snowflake, 멘션 배열
   같은 것이 `core/` 에 들어오면 잘못된 것이다.
+- 채널에서 불린 참가자를 깨우는 규칙은 `core/attention` 이다. 프로세스 기동은
+  호스트다. QA 회차 프로토콜을 여기 넣지 않는다.
 - `adapters/<transport>/` 만 그 전송 수단의 사정을 안다. 새 전송 수단은 core 계약을
   그대로 구현하는 어댑터를 더하는 일이지 core 를 고치는 일이 아니다.
 - `engine/discord/` 는 gateway·backend·store·서비스·복구를 조합하는 공통 실행 엔진이다. 소비자 API 호환 진입점을 제공한다.
