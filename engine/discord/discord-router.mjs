@@ -12,6 +12,8 @@ import { reportDiscordJobFailure } from "./discord-failure.mjs";
 import { jobRevisionForExecutionProfile, sameExecutionProfileExceptAccess } from "./discord-routing.mjs";
 import { AUTHORITY_UNAVAILABLE_NOTICE, PROMPT_INVALID_NOTICE, RUNTIME_INPUT_CHANGED_NOTICE, rejectDiscordAdmission, rejectRuntimeInputChange } from "./discord-admission.mjs";
 import { isProjectPolicyReason, projectPolicyError } from "./project-policy-bridge.mjs";
+import { enqueueAttentionFromDispatch } from "./attention-ingress.mjs";
+import { resolve } from "node:path";
 
 const MAX_QUEUED_TURNS = 32;
 const MAX_SCOPE_QUEUED_TURNS = 8;
@@ -47,7 +49,7 @@ export function noProgressInterventionDue(job, nowMs, interventionMs) {
 export { boundRequestPrompt, discordRequestText, transientPrompt } from "./discord-prompt.mjs";
 
 export class DiscordMessageRouter {
-	constructor({ config, store, token, botUserId, cwd, allowedPaths = [cwd], agentContexts = null, runtimeRoot, instance = "default", agentContextSnapshot = null, runtimeRevision = null, recoveryCodec = null, projectStatus = null, projectPolicy = null, runner = runBackendAttempt, deliver = deliverJobResult, directMessage = postDiscordDirectMessage, send = null, loadHistory = null, backendExecutables = {}, verifyRuntimeInputs = null, now = () => Date.now() }) {
+	constructor({ config, store, token, botUserId, cwd, allowedPaths = [cwd], agentContexts = null, runtimeRoot, instance = "default", instanceDirectory = null, agentContextSnapshot = null, runtimeRevision = null, recoveryCodec = null, projectStatus = null, projectPolicy = null, runner = runBackendAttempt, deliver = deliverJobResult, directMessage = postDiscordDirectMessage, send = null, loadHistory = null, backendExecutables = {}, verifyRuntimeInputs = null, now = () => Date.now() }) {
 		if (typeof send !== "function") throw new Error("confirmed Discord sender is required");
 		if (verifyRuntimeInputs !== null && typeof verifyRuntimeInputs !== "function") throw new Error("runtime input verifier must be a function");
 		if (projectPolicy !== null && typeof projectPolicy !== "function" && typeof projectPolicy?.check !== "function") throw new Error("project policy bridge must be callable");
@@ -63,6 +65,7 @@ export class DiscordMessageRouter {
 		this.allowedPaths = [...allowedPaths];
 		this.runtimeRoot = runtimeRoot;
 		this.instance = instance;
+		this.instanceDirectory = instanceDirectory;
 		this.agentContextSnapshot = agentContextSnapshot;
 		this.agentContexts = agentContexts ?? { default: { cwd, allowedPaths: [...allowedPaths], snapshot: agentContextSnapshot } };
 		if (runtimeRevision !== null && !/^[a-f0-9]{40}$/.test(runtimeRevision)) throw new Error("managed runtime revision is invalid");
@@ -108,6 +111,8 @@ export class DiscordMessageRouter {
 			return { state: "threads_cached" };
 		}
 		if (type !== "MESSAGE_CREATE") return { state: "ignored" };
+		const instanceDirectory = this.instanceDirectory ?? resolve(this.cwd, this.instance === "default" ? "naia-settings/messenger-sessions" : `naia-settings/messenger-sessions/instances/${this.instance}`);
+		void enqueueAttentionFromDispatch(type, data, this.config, instanceDirectory).catch(() => {});
 		const authorization = authorizeDiscordMessage({ message: data, bindings: this.config.discord.bindings, operatorUserIds: this.config.discord.operatorUserIds, participantProfiles: this.config.discord.participantProfiles, botUserId: this.botUserId, threadParents: this.threadParents });
 		const sourceMessageId = data.id;
 		if (!authorization.allowed) {

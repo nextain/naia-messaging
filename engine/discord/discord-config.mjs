@@ -128,7 +128,7 @@ export function loadMessengerConfig(path) {
 	const fd = openSync(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
 	let config;
 	try { config = JSON.parse(readFileSync(fd, "utf8")); } finally { closeSync(fd); }
-	assertOnlyKeys(config, new Set(["schemaVersion", "enabled", "workspaceId", "workspace", "agentProfiles", "persona", "role", "backend", "discord", "runtime", "observability", "service", "recovery", "projectPolicy"]), "messenger config");
+	assertOnlyKeys(config, new Set(["schemaVersion", "enabled", "workspaceId", "workspace", "agentProfiles", "persona", "role", "backend", "discord", "runtime", "observability", "service", "recovery", "projectPolicy", "attention"]), "messenger config");
 	for (const [value, keys, label] of [
 		[config.persona, ["name", "instructions"], "persona"],
 		[config.role, ["name", "allowedActions", "requiresApproval"], "role"],
@@ -140,6 +140,17 @@ export function loadMessengerConfig(path) {
 		[config.recovery ?? {}, ["autoRetry"], "recovery"],
 	]) assertOnlyKeys(value ?? {}, new Set(keys), label);
 	if (config.projectPolicy !== undefined) validateProjectPolicy(config.projectPolicy);
+	if (config.attention !== undefined) {
+		assertOnlyKeys(config.attention, new Set(["enabled", "localIdentity", "rosterFile", "hookModule", "workerScript", "receiptDir", "requireOperator"]), "attention");
+		if (typeof config.attention.enabled !== "boolean") throw new Error("attention.enabled must be boolean");
+		if (config.attention.enabled) {
+			if (typeof config.attention.localIdentity !== "string" || !/^\[[a-z0-9][a-z0-9_-]{1,31}\/[a-z0-9][a-z0-9_.-]{0,63}\]$/.test(config.attention.localIdentity)) {
+				throw new Error("attention.localIdentity must look like [alias/project]");
+			}
+			if (typeof config.attention.hookModule !== "string" || !isAbsolute(config.attention.hookModule)) throw new Error("attention.hookModule must be an absolute path");
+			privateFile(config.attention.hookModule, "attention hook module");
+		}
+	}
 	if (!new Set([1, 2]).has(config.schemaVersion)) throw new Error("unsupported messenger config schema");
 	if (config.schemaVersion === 2) {
 		if (config.agentProfiles !== undefined) {

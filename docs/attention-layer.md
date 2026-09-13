@@ -25,6 +25,13 @@ QA 회차 큐가 아니다. 채널 메시징이다.
 - `adapters/discord/attention.mjs` — 멘션 id → 인스턴스 alias, 본문 핸들 스캔은 core
 - 단위 테스트: `test/core.test.mjs`, `test/adapters-discord.test.mjs`
 
+## 3090 호스트 (alpha-adk)
+
+게이트웨이 `MESSAGE_CREATE` → `enqueueAttentionFromDispatch` → `scripts/attention-dispatch.mjs` → 이 기계가 불렸으면 `attention-worker.mjs`.
+인스턴스 설정 `attention.enabled` / `localIdentity: [naia3090/shell]`.
+
+검증: `node --test scripts/attention-host.test.mjs scripts/attention-dispatch.test.mjs` 그리고 `naia-messaging` `npm test`.
+
 ## 호스트가 이어서 할 일 (다른 세션)
 
 1. 인스턴스 참가자 명부에 `handles`(기기 호칭)를 둔다. 예: alias `naia3090`, handles `["3090"]`.
