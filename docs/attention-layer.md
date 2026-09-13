@@ -25,17 +25,20 @@ QA 회차 큐가 아니다. 채널 메시징이다.
 - `adapters/discord/attention.mjs` — 멘션 id → 인스턴스 alias, 본문 핸들 스캔은 core
 - 단위 테스트: `test/core.test.mjs`, `test/adapters-discord.test.mjs`
 
-## 3090 호스트 (alpha-adk)
+## 호스트 소비자
 
-게이트웨이 `MESSAGE_CREATE` → `enqueueAttentionFromDispatch` → `scripts/attention-dispatch.mjs` → 이 기계가 불렸으면 `attention-worker.mjs`.
-인스턴스 설정 `attention.enabled` / `localIdentity: [naia3090/shell]`.
+게이트웨이는 Discord 인가와 현재 runtime 입력 검증을 통과한 `MESSAGE_CREATE`만 host
+hook에 전달한다. hook에는 메시지가 주장한 이름이 아니라 adapter가 확인한 작성자·participant
+label·허용 action·operatorActions가 전달된다. hook이 `consumed: true`를 반환하면 해당 메시지는
+일반 AI backend로 다시 전달되지 않는다.
 
-검증: `node --test scripts/attention-host.test.mjs scripts/attention-dispatch.test.mjs` 그리고 `naia-messaging` `npm test`.
+호스트는 이 계약으로 특정 기기를 깨우거나 구조화된 팀 작업을 만들 수 있다. 실제 worker,
+기기 명부, queue와 credential은 소비자 인스턴스가 소유한다. 공용 엔진은 그 값을 저장하지 않는다.
 
-## 호스트가 이어서 할 일 (다른 세션)
+## 호스트가 할 일
 
 1. 인스턴스 참가자 명부에 `handles`(기기 호칭)를 둔다. 예: alias `naia3090`, handles `["3090"]`.
-2. 게이트웨이가 사람 메시지를 받을 때 `resolveAttention` / `resolveDiscordAttention`을 부른다.
+2. 인가된 hook context의 participant identity를 사용한다. 메시지 본문의 `operator=...` 같은 값으로 권한을 만들지 않는다.
 3. `localAttention({ attention, localIdentities })` 가 `named`이면 그 호스트의 워커를 켠다.
 4. 워커가 하는 일은 유연하다. 이슈를 읽고, 코드를 받고, 참여한다. QA `qa-executor --round`에 묶지 않는다.
 5. 시작 영수증은 워커가 실제로 시작한 뒤에 남긴다.
