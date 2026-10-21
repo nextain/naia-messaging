@@ -1,98 +1,110 @@
+**English** | [한국어](README.ko.md)
+
 # naia-messaging
 
-사람과 에이전트가 주고받는 대화 계층. 핵심은 전송 수단을 모른다. Discord 가 첫
-어댑터이고, 자체 분산 메신저가 다음 어댑터다.
+The conversation layer between people and agents. The core knows nothing about the transport.
+Discord is the first adapter; our own distributed messenger is the next one.
 
-이 저장소는 **코드만** 담는다. 봇 토큰, 실제 채널·스레드 식별자, 참가자 명부,
-호스트 이름 같은 것은 여기 두지 않는다. 그런 것은 각 인스턴스(개인 ADK, 팀 ADK)의
-설정으로 남고, 문제가 생기면 고치는 코드는 이 한 곳이다.
+This repository holds **code only**. Bot tokens, real channel and thread identifiers, participant
+rosters, host names, and the like are not kept here. Those stay in each instance's configuration
+(personal ADK, team ADK), and the code that fixes problems lives in this one place.
 
-## 왜 전송 중립인가
+## Why transport-neutral
 
-대화의 규칙 — 누가 참가자인지, 스레드가 어떤 작업 항목에 묶이는지, 수신 확인과
-응답이 어떻게 다른지, 확인을 부탁할 때 무엇을 적어야 하는지, 봇의 잡담이 요청하지
-않은 사람에게 떨어지지 않게 하는 주의 라우팅, 언제 사람에게 연락해도 되는지,
-전달이 정말 되었는지 — 은 Discord 든 다른 메신저든 똑같다. 그 규칙을 `core` 에
-두고, 각 전송 수단의 사정은 어댑터가 맡는다. 전송 수단을 바꾸는 일은 다시 쓰는 일이
-아니라 어댑터 하나를 더하는 일이다.
+The rules of conversation — who is a participant, which work item a thread is bound to, how an
+acknowledgement differs from a reply, what to write when asking for confirmation, attention routing
+that keeps bot chatter from landing on people who did not ask for it, when it is acceptable to contact
+a person, and whether delivery really happened — are the same on Discord or any other messenger.
+Those rules live in `core`, and each transport's specifics are handled by its adapter. Changing the
+transport is not a rewrite; it is adding one more adapter.
 
-## 코드 구조
+## Code structure
 
-- **`core/`** — 전송 중립 계약과 로직.
-  - `identity` 참가자와 정체(`[alias/project]`). 플랫폼 식별자는 어댑터의 것이지
-    정체가 아니며 사람에게 보이지 않는다.
-  - `binding` 스레드↔작업 항목 결박, 그리고 주의 라우팅. 공유 공간에서는 기본이
-    "불릴 때만" 응답이라, 요청하지 않은 사람에게 일이 떨어지지 않는다.
-  - `attention` 메시지에서 누구를 불렀는지. 어댑터는 핸들 토큰만 넘기고, 이 기계가
-    불렸는지는 `localAttention`이 가른다. 워커를 켜는 일은 호스트다. QA 회차가 아니다.
-  - `verdict` 게시 ≠ 수신 ≠ 시작. `[메시지 받음]` 같은 수신 확인은 시작 영수증일
-    뿐 응답이 아니다. 마지막 사람 발화 뒤에 진짜 응답이 있었는지로 차례를 가른다.
-  - `confirmation` 확인 요청 네 가지: 누가·무엇을·정확히 어디서·어디로 보고.
-  - `contact-window` 요청·재촉은 접촉 창 안에서만, 고장 알림은 언제나. 창 밖 시간은
-    재촉 횟수에서 세지 않는다.
-  - `delivery` 전달 영수증: 확인됨 / 실패 / 알 수 없음. 세 가지를 뭉개지 않는다.
-  - `monitors` 재조정 같은 감시 로직. 고치지 않고 어긋난 곳만 보고한다.
-- **`adapters/discord/`** — Discord 어댑터. 원 메시지를 중립 스코프로 분류·인가하고,
-  전달 시도를 core 영수증으로 옮기고, 첨부를 서술한다. 자체 메신저 어댑터는
-  [`adapters/README.md`](adapters/README.md) 에 예정으로 적혀 있다.
-- **`engine/discord/`** — Gateway 루프, 백엔드 실행·취소, SQLite 원장, 서비스·감시·전환·복구 엔진. ADK 스킬은 이 모듈들을 호출하는 호환 진입점만 둔다.
-- **`runtime/`** — 설정 형태 검증, 고정된 패키지 설치, 기존 호스트 원장에 연결하는 JSONL API. 실제 설정은 없다.
+- **`core/`** — transport-neutral contracts and logic.
+  - `identity` Participants and identity (`[alias/project]`). Platform identifiers belong to the
+    adapter, are not the identity, and are not shown to people.
+  - `binding` Thread ↔ work-item binding, and attention routing. In shared spaces the default is to
+    respond "only when called", so work does not land on people who did not ask for it.
+  - `attention` Who a message called. The adapter passes only handle tokens, and `localAttention`
+    decides whether this machine was called. Starting a worker is the host's job, not a QA round.
+  - `verdict` Posted ≠ received ≠ started. An acknowledgement such as `[메시지 받음]` ("message
+    received") is only a start receipt, not a reply. Whose turn it is depends on whether a real reply
+    came after the last human message.
+  - `confirmation` The four parts of a confirmation request: who, what, exactly where, and where to
+    report.
+  - `contact-window` Requests and reminders only inside the contact window; failure alerts at any
+    time. Time outside the window does not count toward the number of reminders.
+  - `delivery` Delivery receipts: confirmed / failed / unknown. The three are never merged.
+  - `monitors` Monitoring logic such as reconciliation. It does not fix anything; it only reports
+    where things have drifted.
+- **`adapters/discord/`** — The Discord adapter. It classifies and authorizes raw messages into
+  neutral scopes, translates delivery attempts into core receipts, and describes attachments. The
+  adapter for our own messenger is listed as planned in [`adapters/README.md`](adapters/README.md).
+- **`engine/discord/`** — The Gateway loop, backend run and cancel, the SQLite ledger, and the service, monitoring, cutover, and recovery engines. ADK skills keep only compatibility entry points that call these modules.
+- **`runtime/`** — Config shape validation, pinned package installation, and a JSONL API that connects to an existing host ledger. It contains no real configuration.
 
-## 소비자 설치와 API
+## Consumer installation and API
 
-Node.js 22.13 이상이 필요하며 외부 런타임 의존성은 없다. 소비자는 `engine-lock.json`에
-저장소·정확한 커밋·패키지 전체 SHA-256을 고정한다. `runtime/engine-snapshot.mjs`의
-`installEngineSnapshot()`은 LICENSE·package.json·core·adapters·engine·runtime 전체를
-새 경로에 설치한다. 실행 아티팩트와 롤백 산출물 안에 이 패키지를 포함하고, 실행 전에
-호스트의 신뢰된 부트스트랩으로 전체 무결성을 검증한다. 설치된 복사본을 직접 수정하지 않는다.
+Requires Node.js 22.13 or later, with no external runtime dependencies. Consumers pin the
+repository, the exact commit, and the SHA-256 of the whole package in `engine-lock.json`.
+`installEngineSnapshot()` in `runtime/engine-snapshot.mjs` installs the whole of LICENSE,
+package.json, core, adapters, engine, and runtime into a new path. Include this package in the run
+artifact and rollback output, and verify its full integrity with the host's trusted bootstrap before
+running. Do not modify the installed copy directly.
 
-JavaScript 소비자는 `engine/discord/*` API를 사용한다. Python 같은 기존 호스트는
-`runtime/host-bridge.mjs`의 버전 1 JSONL 파이프를 쓴다. `gateway` 모드는 호스트의
-`state`·`dispatch` ACK를 기다린 뒤 수신 sequence를 커밋하며 heartbeat 제어는 계속 처리한다.
-정상 종료할 때 호스트는 같은 파이프로 `{"version":1,"operation":"stop"}`을 보내고
-`stopped` 영수증과 정상 종료를 받을 때까지 `dispatch`·`state`에 계속 응답한다.
-이미 시작된 dispatch의 마지막 sequence ACK까지 확인하며, 시작하지 않은 프레임은
-기존 checkpoint에서 resume한다. 12초 안에 drain하지 못하거나 ACK가 실패하면 성공
-영수증 없이 실패 종료한다. 호스트도 이전 callback 정리가 끝나기 전에 재접속하지 않는다.
-EOF·프로세스 신호는 정상 종료 요청을 대체하지 않으며 기존 실패 경로를 유지한다.
-`call` 모드는 `scope`·`redact`·`delivery` 한 번의 호출만 수행한다. `backend` 모드는
-이미 claim한 작업 하나를 실행하며 별도 실행 증거 원장으로 같은 작업의 재실행을 거부한다.
-호스트는 작업 큐·승인·수신자·outbox의 정본을 유지한다. 플랫폼 메시지나 모델 출력은 RPC가 아니다.
+JavaScript consumers use the `engine/discord/*` API. Existing hosts such as Python ones use the
+version 1 JSONL pipe in `runtime/host-bridge.mjs`. `gateway` mode commits the received sequence only
+after waiting for the host's `state` and `dispatch` ACKs, and keeps handling heartbeat control.
+For a clean shutdown, the host sends `{"version":1,"operation":"stop"}` over the same pipe and keeps
+answering `dispatch` and `state` until it receives the `stopped` receipt and a clean exit.
+It confirms up to the last sequence ACK of dispatches that have already started, and frames that
+have not started resume from the existing checkpoint. If it cannot drain within 12 seconds or an ACK
+fails, it exits with failure and no success receipt. The host also does not reconnect before the
+previous callback cleanup has finished. EOF and process signals do not replace the clean shutdown
+request and keep the existing failure path.
+`call` mode performs a single `scope`, `redact`, or `delivery` call. `backend` mode runs one
+already-claimed job and refuses to re-run the same job using a separate execution-evidence ledger.
+The host remains the source of truth for the job queue, approvals, recipients, and outbox. Platform
+messages and model output are not RPC.
 
-발송 결과가 `unknown`이면 자동 재전송하지 않는다. 이미 저장한 nonce는 그대로 보존한다.
-등록된 사람을 실제 첫 줄에서 직접 부르는 경우만 명시적 allowlist로 알림을 허용한다.
-백엔드 프로세스에는 Discord 토큰과 게이트웨이 설정 환경을 전달하지 않는다.
-Linux 실행은 별도 보호자가 프로세스 그룹의 소유권을 유지하여 백엔드 종료 후에도
-같은 그룹의 하위 프로세스를 정리한다. 정리를 확인하지 못한 실행은 성공으로 보고하지 않는다.
-자격증명 프로필의 인스턴스별 이전 이름은 소비자의 신뢰된 코드에서만 별칭으로 등록한다.
+If a send result is `unknown`, it is not automatically resent. Nonces already stored are kept as they
+are. Notifications are allowed through an explicit allowlist only when a registered person is called
+directly on the actual first line. The Discord token and gateway configuration environment are not
+passed to backend processes. On Linux, a separate guardian keeps ownership of the process group so
+that child processes in the same group are cleaned up even after the backend exits. A run whose
+cleanup could not be confirmed is not reported as successful. Per-instance former names of
+credential profiles are registered as aliases only in the consumer's trusted code.
 
 
-## 호스트 오케스트레이션 계약
+## Host orchestration contract
 
-큐·승인·outbox·워크트리는 호스트의 것이라, 오케스트레이션 규칙은 코드가 아니라
-계약으로 적는다. 전문은 [`docs/host-orchestration-contract.md`](docs/host-orchestration-contract.md).
+The queue, approvals, outbox, and worktrees belong to the host, so the orchestration rules are
+written as a contract rather than as code. Full text:
+[`docs/host-orchestration-contract.md`](docs/host-orchestration-contract.md) (Korean).
 
-- 타이머로 열린 이슈를 자동 재접수하지 않는다. 일을 움직이는 것은 사람 메시지다.
-- claim 순서는 사람 메시지 → 운영자 접수 → 자동화. 직전 실패를 이유로 사람 후속을
-  읽기 전용 검토로 낮추지 않는다.
-- 모델 답변은 redaction·멘션 허용목록만 적용해 그대로 전달한다. 사전 검증 실패로
-  버리지 않는다.
-- 승인은 셋(운영 고위험·고트래픽 조회·사람만 할 수 있는 결정)만 묻고, 운영자의 스레드
-  답글이 곧 승인이다. 준비 부족은 승인 사유가 아니다.
-- 잡은 이슈별 워크트리에서 돌리고 같은 이슈는 동시에 1건. 백엔드는 단일 턴이며
-  `stopReason` 이 `end_turn` 이 아니면 완료가 아니라 중단이다.
+- Open issues are not automatically re-queued on a timer. What moves work forward is a human message.
+- Claim order is human message → operator intake → automation. A human follow-up is not downgraded
+  to a read-only review because of the previous failure.
+- Model answers are delivered as-is with only redaction and the mention allowlist applied. They are
+  not discarded because of a pre-validation failure.
+- Approval is asked only for three things (high-risk operations, high-traffic queries, decisions only
+  a person can make), and the operator's thread reply is itself the approval. Insufficient preparation
+  is not a reason to ask for approval.
+- Jobs run in per-issue worktrees, with at most one at a time for the same issue. The backend is
+  single-turn, and if `stopReason` is not `end_turn`, it is an interruption, not completion.
 
-## 검증
+## Verification
 
 ```
 npm test
 ```
 
-단위 테스트(`node --test test/`)와 공개 안전성 검사(`scripts/public-safety-scan.mjs`)를
-차례로 돌린다. 안전성 검사는 추적 파일과 git 이력에서 비밀·인스턴스 고유 데이터(개인
-키, 토큰, IP, 17–20 자리 식별자, 이메일, 인스턴스 도메인)를 찾으면 빌드를 실패시킨다.
+Runs the unit tests (`node --test test/`) and then the public safety scan
+(`scripts/public-safety-scan.mjs`). The safety scan fails the build if it finds secrets or
+instance-specific data (private keys, tokens, IPs, 17–20 digit identifiers, emails, instance domains)
+in tracked files or git history.
 
-## 공개 상태
+## Public status
 
-이 저장소는 공개 저장소다. 실제 인스턴스 데이터와 자격증명은 소비자 쪽에 둔다.
-공통 코드를 배포하기 전 전체 트리와 Git 이력의 공개 안전성 검사를 통과해야 한다.
+This is a public repository. Real instance data and credentials stay on the consumer side.
+Before shared code is released, the full tree and Git history must pass the public safety scan.
